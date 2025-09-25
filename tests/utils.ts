@@ -9,6 +9,8 @@ import {HTTPRequest, HTTPResponse} from 'puppeteer-core';
 import {McpResponse} from '../src/McpResponse.js';
 import {McpContext} from '../src/McpContext.js';
 import logger from 'debug';
+import Sinon from 'sinon';
+import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 
 let browser: Browser | undefined;
 
@@ -16,6 +18,7 @@ export async function withBrowser(
   cb: (response: McpResponse, context: McpContext) => Promise<void>,
   options: {debug?: boolean} = {},
 ) {
+  const server = Sinon.createStubInstance(McpServer);
   const {debug = false} = options;
   if (!browser) {
     browser = await puppeteer.launch({
@@ -34,7 +37,7 @@ export async function withBrowser(
     }),
   );
   const response = new McpResponse();
-  const context = await McpContext.from(browser, logger('test'));
+  const context = await McpContext.from(server, browser, logger('test'));
 
   await cb(response, context);
 }

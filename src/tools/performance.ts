@@ -4,8 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import z from 'zod';
-import {Context, defineTool, Response} from './ToolDefinition.js';
+import z, {
+  ZodBoolean,
+  ZodNumber,
+  ZodObject,
+  ZodRawShape,
+  ZodSchema,
+  ZodString,
+} from 'zod';
+import {
+  Context,
+  defineTool,
+  Response,
+  ToolDefinition,
+} from './ToolDefinition.js';
 import {
   getInsightOutput,
   getTraceSummary,
@@ -15,6 +27,17 @@ import {
 import {logger} from '../logger.js';
 import {Page} from 'puppeteer-core';
 import {ToolCategories} from './categories.js';
+import {
+  PerformanceAgent,
+  PerformanceTraceContext,
+} from '../../node_modules/chrome-devtools-frontend/front_end/models/ai_assistance/agents/PerformanceAgent.js';
+import {
+  FunctionObjectParam,
+  ParametersTypes,
+} from '../../node_modules/chrome-devtools-frontend/front_end/core/host/AidaClient.js';
+import {registerTool} from '../register.js';
+import {McpContext} from '../McpContext.js';
+import {AgentFocus} from '../../node_modules/chrome-devtools-frontend/front_end/models/ai_assistance/performance/AIContext.js';
 
 export const startTrace = defineTool({
   name: 'performance_start_trace',
@@ -151,6 +174,31 @@ export const analyzeInsight = defineTool({
   },
 });
 
+function convertInputSchemaToZod(
+  inputSchema: FunctionObjectParam<string>,
+): Record<string, ZodSchema> {
+  const args: Record<string, ZodSchema> = {};
+  // TODO: this is the array type
+  for (const [argName, argSchema] of Object.entries(inputSchema.properties)) {
+    if ('items' in argSchema) {
+      // TODO: need to support the array type
+      continue;
+    }
+
+    const argType =
+      argSchema.type === ParametersTypes.BOOLEAN
+        ? z.boolean()
+        : argSchema.type === ParametersTypes.INTEGER
+          ? z.number()
+          : z.string();
+
+    args[argName] = argType;
+  }
+  console.error(
+    `Converted args: ${JSON.stringify(inputSchema, null, 2)} into Zod: ${JSON.stringify(args, null, 2)}`,
+  );
+  return args;
+}
 async function stopTracingAndAppendOutput(
   page: Page,
   response: Response,
@@ -162,6 +210,49 @@ async function stopTracingAndAppendOutput(
     response.appendResponseLine('The performance trace has been stopped.');
     if (result) {
       context.storeTraceRecording(result);
+
+      const agent = new PerformanceAgent({
+        aidaClient: {} as any,
+      });
+      const traceContext = PerformanceTraceContext.full(result.parsedTrace);
+      agent.addFacts(AgentFocus.full(result.parsedTrace));
+      agent.declareFunctions(traceContext);
+      for (const [name, info] of agent.getFunctionDeclarations()) {
+        const tool = defineTool({
+          name: `performance_${name}`,
+          description: info.description,
+          schema: convertInputSchemaToZod(info.parameters),
+          annotations: {
+            category: ToolCategories.PERFORMANCE,
+            readOnlyHint: true,
+          },
+          handler: async (request, response, context) => {
+            response.appendResponseLine(
+              `I was called with: ${JSON.stringify(request.params)}`,
+            );
+
+            const result = await info.handler(request.params);
+            if ('error' in result) {
+              response.appendResponseLine(
+                `Error in the handler: ${result.error}`,
+              );
+            } else if ('result' in result) {
+              response.appendResponseLine(
+                `Response: ${JSON.stringify(result.result, null, 2)}`,
+              );
+            } else {
+              response.appendResponseLine(`Error: tool needs approval.`);
+            }
+          },
+        });
+
+        registerTool({
+          server: context.server,
+          tool: tool as unknown as ToolDefinition,
+          getContext: async () => context as McpContext,
+          logger,
+        });
+      }
       const insightText = getTraceSummary(result);
       if (insightText) {
         response.appendResponseLine('Insights with performance opportunities:');

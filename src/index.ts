@@ -7,14 +7,10 @@
 
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolResult,
-  SetLevelRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import {SetLevelRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers';
 
-import {McpResponse} from './McpResponse.js';
 import {McpContext} from './McpContext.js';
 
 import {ToolDefinition} from './tools/ToolDefinition.js';
@@ -33,7 +29,7 @@ import * as snapshotTools from './tools/snapshot.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import assert from 'node:assert';
-import {Mutex} from './Mutex.js';
+import {registerTool} from './register.js';
 
 export const cliOptions = {
   browserUrl: {
@@ -156,7 +152,7 @@ async function getContext(): Promise<McpContext> {
     logFile,
   });
   if (context?.browser !== browser) {
-    context = await McpContext.from(browser, logger);
+    context = await McpContext.from(server, browser, logger);
   }
   return context;
 }
@@ -169,56 +165,7 @@ Avoid sharing sensitive or personal information that you do want to share with M
   );
 };
 
-const toolMutex = new Mutex();
-
-function registerTool(tool: ToolDefinition): void {
-  server.registerTool(
-    tool.name,
-    {
-      description: tool.description,
-      inputSchema: tool.schema,
-      annotations: tool.annotations,
-    },
-    async (params): Promise<CallToolResult> => {
-      const guard = await toolMutex.acquire();
-      try {
-        logger(`${tool.name} request: ${JSON.stringify(params, null, '  ')}`);
-        const context = await getContext();
-        const response = new McpResponse();
-        await tool.handler(
-          {
-            params,
-          },
-          response,
-          context,
-        );
-        try {
-          const content = await response.handle(tool.name, context);
-          return {
-            content,
-          };
-        } catch (error) {
-          const errorText =
-            error instanceof Error ? error.message : String(error);
-
-          return {
-            content: [
-              {
-                type: 'text',
-                text: errorText,
-              },
-            ],
-            isError: true,
-          };
-        }
-      } finally {
-        guard.dispose();
-      }
-    },
-  );
-}
-
-const tools = [
+export const tools = [
   ...Object.values(consoleTools),
   ...Object.values(emulationTools),
   ...Object.values(inputTools),
@@ -229,8 +176,14 @@ const tools = [
   ...Object.values(scriptTools),
   ...Object.values(snapshotTools),
 ];
+
 for (const tool of tools) {
-  registerTool(tool as unknown as ToolDefinition);
+  registerTool({
+    server,
+    tool: tool as unknown as ToolDefinition,
+    getContext,
+    logger,
+  });
 }
 
 const transport = new StdioServerTransport();

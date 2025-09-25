@@ -9,6 +9,10 @@ import {PerformanceInsightFormatter} from '../../node_modules/chrome-devtools-fr
 import * as TraceEngine from '../../node_modules/chrome-devtools-frontend/front_end/models/trace/trace.js';
 import {logger} from '../logger.js';
 import {AgentFocus} from '../../node_modules/chrome-devtools-frontend/front_end/models/ai_assistance/performance/AIContext.js';
+import {
+  PerformanceAgent,
+  PerformanceTraceContext,
+} from '../../node_modules/chrome-devtools-frontend/front_end/models/ai_assistance/agents/PerformanceAgent.js';
 
 const engine = TraceEngine.TraceModel.Model.createWithAllHandlers();
 

@@ -22,6 +22,7 @@ import path from 'node:path';
 import {listPages} from './tools/pages.js';
 import {TraceResult} from './trace-processing/parse.js';
 import {WaitForHelper} from './WaitForHelper.js';
+import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export interface TextSnapshotNode extends SerializedAXNode {
   id: string;
@@ -57,6 +58,7 @@ function getNetworkMultiplierFromString(condition: string | null): number {
 export class McpContext implements Context {
   browser: Browser;
   logger: Debugger;
+  readonly server: McpServer;
 
   // The most recent page state.
   #pages: Page[] = [];
@@ -74,9 +76,10 @@ export class McpContext implements Context {
   #nextSnapshotId = 1;
   #traceResults: TraceResult[] = [];
 
-  private constructor(browser: Browser, logger: Debugger) {
+  private constructor(server: McpServer, browser: Browser, logger: Debugger) {
     this.browser = browser;
     this.logger = logger;
+    this.server = server;
 
     this.#networkCollector = new NetworkCollector(
       this.browser,
@@ -107,8 +110,8 @@ export class McpContext implements Context {
     await this.#consoleCollector.init();
   }
 
-  static async from(browser: Browser, logger: Debugger) {
-    const context = new McpContext(browser, logger);
+  static async from(server: McpServer, browser: Browser, logger: Debugger) {
+    const context = new McpContext(server, browser, logger);
     await context.#init();
     return context;
   }

@@ -8,6 +8,7 @@ import z from 'zod';
 import {Dialog, ElementHandle, Page} from 'puppeteer-core';
 import {ToolCategories} from './categories.js';
 import {TraceResult} from '../trace-processing/parse.js';
+import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export interface ToolDefinition<
   Schema extends Zod.ZodRawShape = Zod.ZodRawShape,
@@ -53,6 +54,7 @@ export interface Response {
  * Only add methods required by tools/*.
  */
 export type Context = Readonly<{
+  server: McpServer;
   isRunningPerformanceTrace(): boolean;
   setIsRunningPerformanceTrace(x: boolean): void;
   recordedTraces(): TraceResult[];

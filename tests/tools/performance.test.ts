@@ -239,4 +239,12 @@ describe('performance', () => {
       });
     });
   });
+
+  it.only('works', async () => {
+    console.log('hello world');
+    const rawData = loadTraceAsBuffer('web-dev-with-commit.json.gz');
+    const result = await parseRawTraceBuffer(rawData);
+    assert.ok(result?.parsedTrace);
+    assert.ok(result?.insights);
+  });
 });
